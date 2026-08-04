@@ -1,0 +1,451 @@
+
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>RF Interference Detection Assistant</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: -apple-system, "Segoe UI", system-ui, sans-serif;
+    background: #0d1117;
+    color: #e6edf3;
+    font-size: 14px;
+    line-height: 1.6;
+    min-height: 100vh;
+  }
+
+  .app-shell {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 20px 16px 40px;
+  }
+
+  /* ── Header ── */
+  header {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding-bottom: 18px;
+    border-bottom: 1px solid #21262d;
+    margin-bottom: 22px;
+  }
+  .logo-icon {
+    width: 42px; height: 42px;
+    background: #1c2a3a;
+    border: 1px solid #3b82d4;
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  header h1 { font-size: 20px; font-weight: 700; color: #e6edf3; }
+  header p  { font-size: 12px; color: #8b949e; margin-top: 1px; }
+  .status-badge {
+    margin-left: auto;
+    display: flex; align-items: center; gap: 6px;
+    background: #161b22;
+    border: 1px solid #21262d;
+    border-radius: 20px;
+    padding: 5px 12px;
+    font-size: 12px;
+    color: #8b949e;
+  }
+  .status-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: #3fb950;
+    animation: pulse 2s infinite;
+  }
+  .status-dot.scanning { background: #e3b341; }
+  .status-dot.alert    { background: #f85149; }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50%       { opacity: 0.4; }
+  }
+
+  /* ── Grid Layout ── */
+  .grid-top    { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; margin-bottom: 14px; }
+  .grid-middle { display: grid; grid-template-columns: 2fr 1fr; gap: 14px; margin-bottom: 14px; }
+  .grid-bottom { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px; }
+
+  /* ── Card ── */
+  .card {
+    background: #161b22;
+    border: 1px solid #21262d;
+    border-radius: 10px;
+    overflow: hidden;
+  }
+  .card-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 11px 14px;
+    border-bottom: 1px solid #21262d;
+    background: #0d1117;
+  }
+  .card-title {
+    font-size: 12px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.6px;
+    color: #8b949e;
+    display: flex; align-items: center; gap: 7px;
+  }
+  .card-body { padding: 14px; }
+
+  /* ── Metric Cards ── */
+  .metric-value { font-size: 30px; font-weight: 700; line-height: 1.1; }
+  .metric-unit  { font-size: 13px; color: #8b949e; margin-left: 3px; }
+  .metric-label { font-size: 11px; color: #8b949e; margin-top: 4px; }
+  .metric-sub   { margin-top: 8px; font-size: 11px; }
+  .tag {
+    display: inline-block;
+    padding: 2px 8px; border-radius: 20px;
+    font-size: 11px; font-weight: 600;
+  }
+  .tag-green  { background: #1a3a27; color: #3fb950; border: 1px solid #2ea043; }
+  .tag-yellow { background: #3a2a0a; color: #e3b341; border: 1px solid #9e6a03; }
+  .tag-red    { background: #3a0d0d; color: #f85149; border: 1px solid #da3633; }
+  .tag-blue   { background: #0c2040; color: #58a6ff; border: 1px solid #1f6feb; }
+
+  /* ── Spectrum Analyzer ── */
+  #spectrumCanvas {
+    width: 100%; height: 180px;
+    display: block;
+    background: #0a0e13;
+    border-radius: 4px;
+  }
+  .spectrum-controls {
+    display: flex; gap: 8px; align-items: center;
+    margin-top: 10px; flex-wrap: wrap;
+  }
+  .btn {
+    padding: 5px 12px; border-radius: 6px;
+    border: 1px solid #30363d; background: #21262d;
+    color: #c9d1d9; font-size: 12px; cursor: pointer;
+    transition: background 0.15s;
+  }
+  .btn:hover { background: #30363d; }
+  .btn.active { background: #1f6feb; border-color: #388bfd; color: #fff; }
+  .freq-range { font-size: 11px; color: #8b949e; margin-left: auto; }
+
+  /* ── Signal List ── */
+  .signal-list { list-style: none; display: flex; flex-direction: column; gap: 6px; }
+  .signal-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 10px; border-radius: 7px;
+    background: #0d1117; border: 1px solid #21262d;
+    font-size: 12px; cursor: pointer;
+    transition: border-color 0.15s;
+  }
+  .signal-item:hover { border-color: #3b82d4; }
+  .signal-item.selected { border-color: #3b82d4; background: #0c2040; }
+  .sig-freq { font-weight: 700; font-size: 13px; color: #58a6ff; min-width: 70px; }
+  .sig-name { flex: 1; color: #c9d1d9; }
+  .sig-power { font-size: 11px; color: #8b949e; min-width: 55px; text-align: right; }
+  .sig-bar-wrap { width: 60px; height: 6px; background: #21262d; border-radius: 3px; }
+  .sig-bar { height: 6px; border-radius: 3px; transition: width 0.4s; }
+
+  /* ── Waterfall ── */
+  #waterfallCanvas {
+    width: 100%; height: 140px;
+    display: block; background: #0a0e13; border-radius: 4px;
+  }
+
+  /* ── Interference Log ── */
+  .log-container {
+    height: 160px; overflow-y: auto;
+    background: #0a0e13; border-radius: 6px;
+    padding: 8px 10px;
+    font-family: "Cascadia Code", "Consolas", monospace;
+    font-size: 11px;
+  }
+  .log-container::-webkit-scrollbar { width: 5px; }
+  .log-container::-webkit-scrollbar-track { background: #0a0e13; }
+  .log-container::-webkit-scrollbar-thumb { background: #21262d; border-radius: 3px; }
+  .log-entry { padding: 2px 0; border-bottom: 1px solid #161b22; display: flex; gap: 10px; }
+  .log-time  { color: #3b82d4; min-width: 60px; flex-shrink: 0; }
+  .log-level-WARN  { color: #e3b341; min-width: 40px; }
+  .log-level-ALERT { color: #f85149; min-width: 40px; }
+  .log-level-INFO  { color: #3fb950; min-width: 40px; }
+  .log-msg { color: #8b949e; }
+
+  /* ── Diagnosis Panel ── */
+  .diag-section { margin-bottom: 14px; }
+  .diag-title { font-size: 11px; font-weight: 600; color: #8b949e; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
+  .diag-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 7px 0; border-bottom: 1px solid #161b22; font-size: 12px;
+  }
+  .diag-row:last-child { border-bottom: none; }
+  .diag-key   { color: #8b949e; }
+  .diag-value { font-weight: 600; }
+  .progress-bar-wrap { width: 100%; background: #21262d; border-radius: 4px; height: 6px; margin-top: 4px; }
+  .progress-bar { height: 6px; border-radius: 4px; transition: width 0.6s; }
+  .pb-green  { background: #3fb950; }
+  .pb-yellow { background: #e3b341; }
+  .pb-red    { background: #f85149; }
+  .pb-blue   { background: #3b82d4; }
+
+  /* ── Channel Occupancy ── */
+  .channel-grid {
+    display: grid; grid-template-columns: repeat(14, 1fr);
+    gap: 4px; margin-top: 4px;
+  }
+  .ch-cell {
+    aspect-ratio: 1;
+    border-radius: 3px;
+    background: #21262d;
+    position: relative;
+    cursor: pointer;
+    transition: transform 0.1s;
+  }
+  .ch-cell:hover { transform: scale(1.15); }
+  .ch-label { font-size: 9px; text-align: center; color: #8b949e; margin-top: 3px; }
+
+  /* ── SNR Gauge ── */
+  #snrGauge { display: block; margin: 0 auto; }
+
+  /* ── Controls Bar ── */
+  .controls-bar {
+    display: flex; gap: 10px; align-items: center;
+    background: #161b22; border: 1px solid #21262d;
+    border-radius: 10px; padding: 12px 16px;
+    margin-bottom: 14px; flex-wrap: wrap;
+  }
+  .controls-bar label { font-size: 12px; color: #8b949e; }
+  .controls-bar select, .controls-bar input[type=range] {
+    background: #21262d; border: 1px solid #30363d; color: #c9d1d9;
+    border-radius: 5px; padding: 4px 8px; font-size: 12px; cursor: pointer;
+  }
+  .controls-bar input[type=range] { accent-color: #3b82d4; width: 100px; padding: 0; }
+  .scan-btn {
+    margin-left: auto;
+    padding: 7px 20px; border-radius: 6px;
+    background: #1f6feb; border: 1px solid #388bfd;
+    color: #fff; font-size: 13px; font-weight: 600; cursor: pointer;
+    transition: background 0.15s;
+  }
+  .scan-btn:hover { background: #388bfd; }
+  .scan-btn.stop { background: #da3633; border-color: #f85149; }
+
+  /* ── Tooltip ── */
+  .tooltip-box {
+    display: none;
+    position: fixed; z-index: 999;
+    background: #1c2128; border: 1px solid #3b82d4;
+    border-radius: 6px; padding: 8px 12px;
+    font-size: 11px; color: #c9d1d9; pointer-events: none;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+    max-width: 200px;
+  }
+
+  /* ── Footer ── */
+  .footer {
+    text-align: center; font-size: 11px; color: #484f58;
+    padding-top: 20px; border-top: 1px solid #21262d; margin-top: 10px;
+  }
+
+  @media (max-width: 700px) {
+    .grid-top, .grid-middle, .grid-bottom { grid-template-columns: 1fr; }
+    .channel-grid { grid-template-columns: repeat(7, 1fr); }
+  }
+</style>
+</head>
+<body>
+<div class="app-shell">
+
+  
+  <header>
+    <div class="logo-icon">
+      <svg width="22" height="22" fill="none">
+        <path d="M2 12 Q6 4 12 12 Q18 20 22 12" stroke="#3b82d4" stroke-width="2" stroke-linecap="round" fill="none"></path>
+        <circle cx="12" cy="12" r="2" fill="#3b82d4"></circle>
+        <path d="M12 2 v3 M12 19 v3 M2 12 h3 M19 12 h3" stroke="#3b82d4" stroke-width="1.5" stroke-linecap="round"></path>
+      </svg>
+    </div>
+    <div>
+      <h1>RF Interference Detection Assistant</h1>
+      <p>Real-time spectrum analysis · Signal classification · Interference diagnostics</p>
+    </div>
+    <div class="status-badge">
+      <div class="status-dot scanning" id="statusDot"></div>
+      <span id="statusText">Scanning…</span>
+    </div>
+  </header>
+
+  
+  <div class="controls-bar">
+    <label>Band:</label>
+    <select id="bandSelect">
+      <option>UHF (300–3000 MHz)</option>
+      <option>VHF (30–300 MHz)</option>
+      <option>Wi-Fi 2.4 GHz</option>
+      <option>Wi-Fi 5 GHz</option>
+      <option>ISM 900 MHz</option>
+    </select>
+    <label style="margin-left:10px">Sensitivity:</label>
+    <input type="range" id="sensitivitySlider" />
+    <span id="sensitivityVal" style="font-size:12px;color:#58a6ff;min-width:16px">7</span>
+    <label style="margin-left:10px">Resolution:</label>
+    <select id="resSelect">
+      <option>Low</option>
+      <option>Medium</option>
+      <option>High</option>
+    </select>
+    <button class="scan-btn stop" id="scanBtn">■ Stop Scan</button>
+  </div>
+
+  
+  <div class="grid-top">
+    <div class="card">
+      <div class="card-header"><span class="card-title">
+        <svg width="12" height="12" fill="#e3b341"><circle cx="8" cy="8" r="7" stroke="#e3b341" stroke-width="1.5" fill="none"></circle><text x="8" y="12" text-anchor="middle" font-size="10" fill="#e3b341">!</text></svg>
+        Interference Level
+      </span></div>
+      <div class="card-body">
+        <div class="metric-value" id="ifLevel" style="color:#e3b341">MOD<span class="metric-unit"></span></div>
+        <div class="metric-label">Current interference classification</div>
+        <div class="metric-sub"><span class="tag tag-yellow" id="ifTag">Moderate</span></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header"><span class="card-title">
+        <svg width="12" height="12"><path d="M1 13 L4 7 L7 10 L10 4 L13 8 L15 5" stroke="#58a6ff" stroke-width="1.5" fill="none" stroke-linecap="round"></path></svg>
+        Peak Signal
+      </span></div>
+      <div class="card-body">
+        <div class="metric-value" id="peakSignal" style="color:#58a6ff">-42<span class="metric-unit">dBm</span></div>
+        <div class="metric-label">Strongest detected signal</div>
+        <div class="metric-sub" id="peakFreqLabel" style="font-size:11px;color:#8b949e">@ 2437 MHz</div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header"><span class="card-title">
+        <svg width="12" height="12"><circle cx="8" cy="8" r="6" stroke="#3fb950" stroke-width="1.5" fill="none"></circle><path d="M5 8 L7 10 L11 6" stroke="#3fb950" stroke-width="1.5" stroke-linecap="round" fill="none"></path></svg>
+        SNR
+      </span></div>
+      <div class="card-body">
+        <div class="metric-value" id="snrValue" style="color:#3fb950">28<span class="metric-unit">dB</span></div>
+        <div class="metric-label">Signal-to-Noise Ratio</div>
+        <div class="metric-sub"><span class="tag tag-green" id="snrTag">Good</span></div>
+      </div>
+    </div>
+  </div>
+
+  
+  <div class="grid-middle">
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">
+          <svg width="12" height="12"><rect x="1" y="1" width="14" height="14" rx="2" stroke="#8b949e" stroke-width="1" fill="none"></rect><path d="M3 11 L5 7 L7 9 L9 4 L11 8 L13 6" stroke="#3b82d4" stroke-width="1.5" fill="none" stroke-linecap="round"></path></svg>
+          Spectrum Analyzer
+        </span>
+        <span class="freq-range" id="freqRange">2400 – 2500 MHz</span>
+      </div>
+      <div class="card-body" style="padding:10px">
+        
+        <div class="spectrum-controls">
+          <button class="btn" id="btnPeak">Peak Hold</button>
+          <button class="btn active" id="btnAvg">Avg</button>
+          <button class="btn" id="btnZoom">Zoom +</button>
+          <span class="freq-range" id="noiseFloor">Noise floor: -95 dBm</span>
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header"><span class="card-title">
+        <svg width="12" height="12"><line x1="8" y1="2" x2="8" y2="14" stroke="#8b949e" stroke-width="1"></line><path d="M4 6 L8 2 L12 6" stroke="#58a6ff" stroke-width="1.5" fill="none"></path><path d="M4 10 L8 14 L12 10" stroke="#f85149" stroke-width="1.5" fill="none"></path></svg>
+        Detected Signals
+      </span></div>
+      <div class="card-body" style="padding:10px">
+        <ul class="signal-list" id="signalList"></ul>
+      </div>
+    </div>
+  </div>
+
+  
+  <div class="grid-bottom">
+    <div class="card">
+      <div class="card-header"><span class="card-title">
+        <svg width="12" height="12"><rect x="1" y="1" width="14" height="4" rx="1" fill="#1a3a27"></rect><rect x="1" y="6" width="14" height="4" rx="1" fill="#3a2a0a"></rect><rect x="1" y="11" width="14" height="4" rx="1" fill="#3a0d0d"></rect></svg>
+        Waterfall Display
+      </span>
+      <span style="font-size:10px;color:#484f58">Time ↓ · Freq →</span>
+      </div>
+      <div class="card-body" style="padding:10px">
+        
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header"><span class="card-title">
+        <svg width="12" height="12"><circle cx="8" cy="8" r="6" stroke="#e3b341" stroke-width="1.5" fill="none"></circle><line x1="8" y1="5" x2="8" y2="9" stroke="#e3b341" stroke-width="1.5"></line><circle cx="8" cy="11" r="1" fill="#e3b341"></circle></svg>
+        Interference Diagnosis
+      </span></div>
+      <div class="card-body">
+        <div class="diag-section">
+          <div class="diag-title">Channel Metrics</div>
+          <div class="diag-row"><span class="diag-key">Noise Floor</span><span class="diag-value" id="dNoiseFloor">-95 dBm</span></div>
+          <div class="diag-row"><span class="diag-key">Channel Utilisation</span>
+            <span class="diag-value" id="dUtil">62%</span>
+          </div>
+          <div class="progress-bar-wrap"><div class="progress-bar pb-yellow" id="pbUtil" style="width:62%"></div></div>
+        </div>
+        <div class="diag-section">
+          <div class="diag-title">Interference Sources</div>
+          <div class="diag-row"><span class="diag-key">Co-channel</span><span id="dCo" class="diag-value tag tag-yellow">Moderate</span></div>
+          <div class="diag-row"><span class="diag-key">Adjacent Channel</span><span id="dAdj" class="diag-value tag tag-green">Low</span></div>
+          <div class="diag-row"><span class="diag-key">Intermodulation</span><span id="dImod" class="diag-value tag tag-green">Low</span></div>
+          <div class="diag-row"><span class="diag-key">Broadband Noise</span><span id="dBbn" class="diag-value tag tag-red">High</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  
+  <div class="grid-bottom">
+    <div class="card">
+      <div class="card-header"><span class="card-title">
+        <svg width="12" height="12"><rect x="1" y="9" width="3" height="6" rx="1" fill="#3b82d4"></rect><rect x="5" y="6" width="3" height="9" rx="1" fill="#3b82d4"></rect><rect x="9" y="3" width="3" height="12" rx="1" fill="#e3b341"></rect><rect x="13" y="7" width="3" height="8" rx="1" fill="#3b82d4"></rect></svg>
+        Channel Occupancy Map
+      </span></div>
+      <div class="card-body">
+        <div class="channel-grid" id="channelGrid"></div>
+        <div style="display:flex;gap:14px;margin-top:8px;font-size:10px;color:#8b949e;flex-wrap:wrap">
+          <span><span style="display:inline-block;width:10px;height:10px;background:#1a3a27;border-radius:2px;margin-right:4px;vertical-align:middle"></span>Free</span>
+          <span><span style="display:inline-block;width:10px;height:10px;background:#9e6a03;border-radius:2px;margin-right:4px;vertical-align:middle"></span>Busy</span>
+          <span><span style="display:inline-block;width:10px;height:10px;background:#da3633;border-radius:2px;margin-right:4px;vertical-align:middle"></span>Interfering</span>
+          <span><span style="display:inline-block;width:10px;height:10px;background:#1f6feb;border-radius:2px;margin-right:4px;vertical-align:middle"></span>Selected</span>
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">
+          <svg width="12" height="12"><rect x="2" y="2" width="12" height="12" rx="2" stroke="#8b949e" stroke-width="1" fill="none"></rect><line x1="5" y1="6" x2="11" y2="6" stroke="#8b949e" stroke-width="1"></line><line x1="5" y1="9" x2="9" y2="9" stroke="#8b949e" stroke-width="1"></line></svg>
+          Event Log
+        </span>
+        <button class="btn" id="clearLogBtn" style="padding:2px 8px;font-size:10px">Clear</button>
+      </div>
+      <div class="card-body" style="padding:10px">
+        <div class="log-container" id="logContainer"></div>
+      </div>
+    </div>
+  </div>
+
+  
+  <div class="card" style="margin-bottom:14px">
+    <div class="card-header"><span class="card-title">
+      <svg width="12" height="12"><path d="M8 1 L10 6 L15 6 L11 9 L13 14 L8 11 L3 14 L5 9 L1 6 L6 6 Z" stroke="#e3b341" stroke-width="1" fill="#3a2a0a"></path></svg>
+      Recommendations
+    </span></div>
+    <div class="card-body">
+      <div id="recommendationsList" style="display:flex;flex-direction:column;gap:8px"></div>
+    </div>
+  </div>
+
+</div>
+
+<div class="tooltip-box" id="tooltip"></div>
+
+<div class="footer">Made with IBM Bob</div>
+
+
+</body>
+</html>
